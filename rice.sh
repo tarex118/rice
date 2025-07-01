@@ -111,7 +111,74 @@ install_ohmyzsh_and_plugins() {
 write_zshrc() {
   echo "[*] Writing .zshrc..."
   cat > ~/.zshrc << 'EOF'
-# ... same .zshrc content from earlier ...
+# Enable Powerlevel10k instant prompt.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+export ZSH="$HOME/.oh-my-zsh"
+export PATH="${KREW_ROOT:-$HOME/.krew}/bin:$HOME/.local/bin:$PATH"
+export KUBECONFIG="$HOME/.kube/config"
+
+ZSH_THEME="powerlevel10k/powerlevel10k"
+plugins=(git fzf zsh-syntax-highlighting zsh-autosuggestions kube-ps1)
+RPROMPT='$(kube_ps1)'
+
+source ~/.kube-ps1/kube-ps1.sh
+source $ZSH/oh-my-zsh.sh
+
+compdef kubecolor=kubectl
+source <(kubectl completion zsh)
+
+ZSH_HIGHLIGHT_HIGHLIGHTERS=(main brackets pattern)
+ZSH_HIGHLIGHT_STYLES[default]=none
+ZSH_HIGHLIGHT_STYLES[unknown-token]=fg=red,bold
+ZSH_HIGHLIGHT_STYLES[reserved-word]=fg=cyan,bold
+ZSH_HIGHLIGHT_STYLES[suffix-alias]=fg=green,underline
+ZSH_HIGHLIGHT_STYLES[global-alias]=fg=magenta
+ZSH_HIGHLIGHT_STYLES[precommand]=fg=green,underline
+ZSH_HIGHLIGHT_STYLES[commandseparator]=fg=blue,bold
+ZSH_HIGHLIGHT_STYLES[autodirectory]=fg=green,underline
+ZSH_HIGHLIGHT_STYLES[path]=underline
+ZSH_HIGHLIGHT_STYLES[globbing]=fg=blue,bold
+ZSH_HIGHLIGHT_STYLES[history-expansion]=fg=blue,bold
+ZSH_HIGHLIGHT_STYLES[command-substitution-delimiter]=fg=magenta
+ZSH_HIGHLIGHT_STYLES[process-substitution-delimiter]=fg=magenta
+ZSH_HIGHLIGHT_STYLES[single-hyphen-option]=fg=magenta
+ZSH_HIGHLIGHT_STYLES[double-hyphen-option]=fg=magenta
+ZSH_HIGHLIGHT_STYLES[single-quoted-argument]=fg=yellow
+ZSH_HIGHLIGHT_STYLES[double-quoted-argument]=fg=yellow
+ZSH_HIGHLIGHT_STYLES[dollar-quoted-argument]=fg=yellow
+ZSH_HIGHLIGHT_STYLES[comment]=fg=black,bold
+ZSH_HIGHLIGHT_STYLES[arg0]=fg=green
+ZSH_HIGHLIGHT_STYLES[bracket-error]=fg=red,bold
+ZSH_HIGHLIGHT_STYLES[bracket-level-1]=fg=blue,bold
+ZSH_HIGHLIGHT_STYLES[bracket-level-2]=fg=green,bold
+ZSH_HIGHLIGHT_STYLES[bracket-level-3]=fg=magenta,bold
+ZSH_HIGHLIGHT_STYLES[bracket-level-4]=fg=yellow,bold
+ZSH_HIGHLIGHT_STYLES[bracket-level-5]=fg=cyan,bold
+ZSH_HIGHLIGHT_STYLES[cursor-matchingbracket]=standout
+
+ZSH_AUTOSUGGEST_HIGHLIGHT_STYLE="fg=#999999"
+
+alias shoot='kubectl run net-test --rm -it --image=nicolaka/netshoot --restart=Never -- bash'
+alias vim='nvim'
+alias c="xclip -selection clipboard"
+alias cat="bat"
+alias k="kubecolor"
+alias proxmox="wakeonlan d8:5e:d3:d9:ed:b7"
+alias new-server="curl -sS https://gist.githubusercontent.com/zAbuQasem/cbdc151a15277a96117b34b6c56934d9/raw/0b3cf9203c3842c670bf8a5be3f99deae949b454/terminal.sh |c"
+alias mount-backup='sudo mount -t nfs -o resvport 192.168.1.20:/mnt/backup ~/mnt/backup'
+alias myip='curl https://icanhazip.com'
+alias kx='kubectx'
+alias kn='kubens'
+alias p='pwgen -s 15'
+alias projects='cd ~/Documents/projects/'
+source <(fzf --zsh)
+
+[[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
+[ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
+export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 EOF
 }
 
@@ -129,3 +196,4 @@ write_zshrc
 
 echo -e "\n✅ All done! Launch with: exec zsh"
 echo "🎨 Set terminal font to: FiraCode Nerd Font"
+
