@@ -51,17 +51,21 @@ install_kubectl() {
   fi
 }
 
+
 install_kubecolor() {
   if ! command -v kubecolor &>/dev/null; then
     echo "[*] Installing kubecolor..."
-    KUBECOLOR_LATEST=$(curl -s https://api.github.com/repos/hidetatz/kubecolor/releases/latest | grep browser_download_url | grep linux_amd64 | cut -d '"' -f 4)
-    curl -Lo kubecolor "$KUBECOLOR_LATEST"
+    KUBECOLOR_LATEST=$(curl -s https://api.github.com/repos/kubecolor/kubecolor/releases/latest | grep browser_download_url | grep linux_amd64.tar.gz | cut -d '"' -f 4)
+    curl -Lo kubecolor.tar.gz "$KUBECOLOR_LATEST"
+    tar -xzf kubecolor.tar.gz kubecolor
     chmod +x kubecolor
     sudo mv kubecolor /usr/local/bin/
+    rm kubecolor.tar.gz
   else
     echo "[✓] kubecolor already installed."
   fi
 }
+
 
 install_kubectx_kubens() {
   if ! command -v kubectx &>/dev/null; then
@@ -73,6 +77,26 @@ install_kubectx_kubens() {
     echo "[✓] kubectx and kubens already installed."
   fi
 }
+
+install_k9s() {
+  if ! command -v k9s &>/dev/null; then
+    echo "[*] Installing k9s..."
+    K9S_LATEST=$(curl -s https://api.github.com/repos/derailed/k9s/releases/latest \
+      | grep browser_download_url \
+      | grep 'k9s_Linux_amd64\.tar\.gz"' \
+      | cut -d '"' -f 4 | head -n1)
+
+    curl -Lo k9s.tar.gz "$K9S_LATEST"
+    tar -xzf k9s.tar.gz k9s
+    chmod +x k9s
+    sudo mv k9s /usr/local/bin/
+    rm k9s.tar.gz
+    echo "[✓] k9s installed."
+  else
+    echo "[✓] k9s already installed."
+  fi
+}
+
 
 install_aws_cli() {
   if ! command -v aws &>/dev/null; then
@@ -189,6 +213,7 @@ install_lazygit
 install_kubectl
 install_kubecolor
 install_kubectx_kubens
+install_k9s
 install_aws_cli
 install_fonts
 install_ohmyzsh_and_plugins
