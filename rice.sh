@@ -110,6 +110,39 @@ install_aws_cli() {
   fi
 }
 
+install_docker() {
+  if ! command -v docker &>/dev/null; then
+    echo "[*] Installing Docker..."
+    # official convenience script (latest stable CLI + Engine)
+    curl -fsSL https://get.docker.com -o get-docker.sh
+    sudo sh get-docker.sh                          # installs & enables the service
+    rm get-docker.sh
+
+    # add current user to the docker group (so you can run without sudo)
+    sudo usermod -aG docker "$USER"
+    echo "[i] Added $USER to the docker group. Log out & back in (or run: newgrp docker)."
+    echo "[✓] Docker installed ($(/usr/bin/docker --version))."
+  else
+    echo "[✓] Docker already installed."
+  fi
+}
+
+install_docker_compose() {
+  if ! command -v docker-compose &>/dev/null; then
+    echo "[*] Installing Docker Compose..."
+    COMPOSE_URL=$(curl -s https://api.github.com/repos/docker/compose/releases/latest \
+      | grep browser_download_url \
+      | grep "docker-compose-$(uname -s | tr '[:upper:]' '[:lower:]')-$(uname -m)\"" \
+      | cut -d '"' -f 4 | head -n1)
+
+    sudo curl -L "$COMPOSE_URL" -o /usr/local/bin/docker-compose
+    sudo chmod +x /usr/local/bin/docker-compose
+    echo "[✓] Docker Compose installed ($(/usr/local/bin/docker-compose --version))."
+  else
+    echo "[✓] Docker Compose already installed."
+  fi
+}
+
 install_fonts() {
   echo "[*] Installing FiraCode Nerd Font..."
   git clone --depth 1 https://github.com/ryanoasis/nerd-fonts.git ~/nerd-fonts
@@ -214,6 +247,8 @@ install_kubectl
 install_kubecolor
 install_kubectx_kubens
 install_k9s
+install_docker
+install_docker_compose
 install_aws_cli
 install_fonts
 install_ohmyzsh_and_plugins
