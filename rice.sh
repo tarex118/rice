@@ -229,9 +229,12 @@ alias mount-backup='sudo mount -t nfs -o resvport 192.168.1.20:/mnt/backup ~/mnt
 alias myip='curl https://icanhazip.com'
 alias kx='kubectx'
 alias kn='kubens'
-alias p='pwgen -s 15'
+alias pw1='pwgen -s 15'
 alias projects='cd ~/Documents/projects/'
+alias code='cursor'
+alias mount-personal='sudo mount -t nfs -o resvport 192.168.1.20:/mnt/Personal ~/Personal'
 source <(fzf --zsh)
+eval "$(zoxide init zsh)"
 
 [[ -f ~/.p10k.zsh ]] && source ~/.p10k.zsh
 [ -s "$HOME/.config/envman/load.sh" ] && source "$HOME/.config/envman/load.sh"
