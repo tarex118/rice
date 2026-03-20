@@ -35,6 +35,32 @@ install_core_packages() {
   export LANG=en_US.UTF-8
 }
 
+install_rpmfusion() {
+  echo "[*] Adding RPM Fusion repositories..."
+  sudo dnf install -y \
+    "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
+    "https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm"
+  echo "[✓] RPM Fusion enabled."
+}
+
+install_easyeffects() {
+  if ! command -v easyeffects &>/dev/null; then
+    echo "[*] Installing Easy Effects..."
+    sudo dnf install -y easyeffects
+    echo "[✓] Easy Effects installed."
+  else
+    echo "[✓] Easy Effects already installed."
+  fi
+}
+
+install_easyeffects_thinkpad_preset() {
+  echo "[*] Installing Thinkpad P14s Gen 2 AMD preset (thinkpad-unsuck)..."
+  mkdir -p ~/.config/easyeffects/output
+  curl -sSLo ~/.config/easyeffects/output/thinkpad-unsuck.json \
+    "https://raw.githubusercontent.com/sebastian-de/easyeffects-thinkpad-unsuck/main/thinkpad-unsuck.json"
+  echo "[✓] Preset installed. Load 'thinkpad-unsuck' in Easy Effects → Output → Presets."
+}
+
 install_zoxide() {
   if ! command -v zoxide &>/dev/null; then
     echo "[*] Installing zoxide..."
@@ -247,6 +273,9 @@ EOF
 # ------------------------- Main -------------------------
 main() {
   install_core_packages
+  install_rpmfusion
+  install_easyeffects
+  install_easyeffects_thinkpad_preset
   install_zoxide
   install_lazygit
   install_kubectl
