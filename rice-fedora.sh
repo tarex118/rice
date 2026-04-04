@@ -12,30 +12,50 @@ case "$ARCH" in
   *) echo "[!] Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
+# Non-zero exit from a step function = failure. This code = skipped (wrong arch/CPU), not failure.
+RICE_STEP_SKIP=99
+
 # ------------------------- Functions -------------------------
 install_core_packages() {
-  echo "[*] Installing base packages (Fedora/dnf)..."
-  sudo dnf install -y dnf-plugins-core
-  sudo dnf install -y \
-    curl wget git unzip zsh \
-    neovim ripgrep fd-find bat \
-    jq pwgen tmux xclip fontconfig fzf \
-    @development-tools \
-    glibc-langpack-en
-
   mkdir -p ~/.local/bin
   export PATH="$HOME/.local/bin:$PATH"
 
+  local pkgs=(
+    dnf-plugins-core curl wget git unzip zsh
+    neovim ripgrep fd-find bat
+    jq pwgen tmux xclip fontconfig fzf glibc-langpack-en
+  )
+  local missing=()
+  local p
+  for p in "${pkgs[@]}"; do
+    rpm -q "$p" &>/dev/null || missing+=("$p")
+  done
+  if ((${#missing[@]} > 0)); then
+    echo "[*] Installing missing base packages (${#missing[@]}): ${missing[*]}..."
+    sudo dnf install -y "${missing[@]}"
+  else
+    echo "[✓] Base dnf packages already installed."
+  fi
+  if ! rpm -q gcc &>/dev/null; then
+    echo "[*] Installing @development-tools (gcc not present)..."
+    sudo dnf install -y @development-tools
+  else
+    echo "[✓] @development-tools already satisfied (gcc present)."
+  fi
+
   # Fedora: fd-find provides fdfind; create fd symlink for compatibility
   if command -v fdfind &>/dev/null && [ ! -e ~/.local/bin/fd ]; then
-    ln -sf "$(which fdfind)" ~/.local/bin/fd
+    ln -sf "$(command -v fdfind)" ~/.local/bin/fd
   fi
-  # Fedora: bat is just 'bat', no batcat
 
   export LANG=en_US.UTF-8
 }
 
 install_rpmfusion() {
+  if rpm -q rpmfusion-free-release rpmfusion-nonfree-release &>/dev/null; then
+    echo "[✓] RPM Fusion already enabled."
+    return
+  fi
   echo "[*] Adding RPM Fusion repositories..."
   sudo dnf install -y \
     "https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm" \
@@ -43,22 +63,107 @@ install_rpmfusion() {
   echo "[✓] RPM Fusion enabled."
 }
 
-install_easyeffects() {
-  if ! command -v easyeffects &>/dev/null; then
-    echo "[*] Installing Easy Effects..."
-    sudo dnf install -y easyeffects
-    echo "[✓] Easy Effects installed."
-  else
-    echo "[✓] Easy Effects already installed."
+# Intel i7-1185G7 (11th Gen Tiger Lake, Iris Xe 96 EU) and same-class CPUs: microcode + VA-API/Vulkan.
+# Mesa + linux-firmware usually cover the GPU; this pulls microcode_ctl and the standard media/Vulkan stack.
+install_intel_microcode_and_igpu() {
+  if [[ "$ARCH" != "x86_64" ]]; then
+    echo "[!] Intel microcode / iGPU packages: skipping (x86_64 only)."
+    return "$RICE_STEP_SKIP"
   fi
+  if ! grep -qE '^vendor_id\s*:\s*GenuineIntel' /proc/cpuinfo 2>/dev/null; then
+    echo "[!] Intel microcode / iGPU: skipping (no Intel CPU in /proc/cpuinfo)."
+    return "$RICE_STEP_SKIP"
+  fi
+  local intel_pkgs=(microcode_ctl intel-media-driver mesa-vulkan-drivers libva-utils)
+  local missing=()
+  local p
+  for p in "${intel_pkgs[@]}"; do
+    rpm -q "$p" &>/dev/null || missing+=("$p")
+  done
+  if ((${#missing[@]} == 0)); then
+    echo "[✓] Intel microcode + iGPU packages already installed."
+    return
+  fi
+  echo "[*] Installing Intel CPU microcode / iGPU packages (missing: ${missing[*]})..."
+  sudo dnf install -y "${missing[@]}"
+  echo "[✓] Intel microcode + iGPU stack installed. Reboot to apply microcode; optional: vainfo"
+}
+
+install_easyeffects() {
+  if command -v easyeffects &>/dev/null || rpm -q easyeffects &>/dev/null 2>&1; then
+    echo "[✓] Easy Effects already installed."
+    return
+  fi
+  echo "[*] Installing Easy Effects..."
+  sudo dnf install -y easyeffects
+  echo "[✓] Easy Effects installed."
 }
 
 install_easyeffects_thinkpad_preset() {
+  local preset="$HOME/.config/easyeffects/output/thinkpad-unsuck.json"
+  if [[ -s "$preset" ]]; then
+    echo "[✓] Easy Effects thinkpad-unsuck preset already present."
+    return
+  fi
   echo "[*] Installing Thinkpad P14s Gen 2 AMD preset (thinkpad-unsuck)..."
   mkdir -p ~/.config/easyeffects/output
-  curl -sSLo ~/.config/easyeffects/output/thinkpad-unsuck.json \
+  curl -sSLo "$preset" \
     "https://raw.githubusercontent.com/sebastian-de/easyeffects-thinkpad-unsuck/main/thinkpad-unsuck.json"
   echo "[✓] Preset installed. Load 'thinkpad-unsuck' in Easy Effects → Output → Presets."
+}
+
+install_brave() {
+  if command -v brave-browser &>/dev/null || rpm -q brave-browser &>/dev/null 2>&1; then
+    echo "[✓] Brave already installed."
+    return
+  fi
+  echo "[*] Adding Brave Browser RPM repository..."
+  sudo dnf config-manager addrepo --from-repofile=https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo 2>/dev/null || {
+    sudo dnf config-manager --add-repo https://brave-browser-rpm-release.s3.brave.com/brave-browser.repo
+    sudo rpm --import https://brave-browser-rpm-release.s3.brave.com/brave-core.asc
+  }
+  echo "[*] Installing Brave..."
+  sudo dnf install -y brave-browser
+  echo "[✓] Brave installed."
+}
+
+install_cursor() {
+  if command -v cursor &>/dev/null || rpm -q cursor &>/dev/null 2>&1; then
+    echo "[✓] Cursor already installed."
+    return
+  fi
+  echo "[*] Installing Cursor (official RPM)..."
+  curl -fsSL -o /tmp/cursor.rpm "https://www.cursor.com/download/linux/rpm"
+  sudo dnf install -y /tmp/cursor.rpm
+  rm -f /tmp/cursor.rpm
+  echo "[✓] Cursor installed."
+}
+
+install_claude_cli() {
+  if command -v claude &>/dev/null; then
+    echo "[✓] Claude Code CLI already installed."
+    return
+  fi
+  echo "[*] Installing Claude Code CLI (official installer → ~/.local/bin)..."
+  curl -fsSL https://claude.ai/install.sh | bash
+  echo "[✓] Claude CLI installed. Ensure ~/.local/bin is on PATH."
+}
+
+install_spotify() {
+  if command -v spotify &>/dev/null || rpm -q spotify-client &>/dev/null 2>&1; then
+    echo "[✓] Spotify already installed."
+    return
+  fi
+  if [[ "$ARCH" != "x86_64" ]]; then
+    echo "[!] Spotify RPM from negativo17 is x86_64-only. Try: sudo dnf install lpf-spotify-client (RPM Fusion)."
+    return "$RICE_STEP_SKIP"
+  fi
+  echo "[*] Adding negativo17 Spotify RPM repository..."
+  sudo dnf config-manager addrepo --from-repofile=https://negativo17.org/repos/fedora-spotify.repo 2>/dev/null || \
+    sudo dnf config-manager --add-repo=https://negativo17.org/repos/fedora-spotify.repo
+  echo "[*] Installing spotify-client..."
+  sudo dnf install -y spotify-client
+  echo "[✓] Spotify installed."
 }
 
 install_zoxide() {
@@ -116,15 +221,15 @@ install_kubecolor() {
 }
 
 install_kubectx_kubens() {
-  if ! command -v kubectx &>/dev/null; then
-    echo "[*] Installing kubectx and kubens..."
-    [ -d ~/.kubectx ] || git clone --depth 1 https://github.com/ahmetb/kubectx ~/.kubectx
-    sudo ln -sf ~/.kubectx/kubectx /usr/local/bin/kubectx
-    sudo ln -sf ~/.kubectx/kubens /usr/local/bin/kubens
-    echo "[✓] kubectx/kubens installed."
-  else
+  if command -v kubectx &>/dev/null && command -v kubens &>/dev/null; then
     echo "[✓] kubectx and kubens already installed."
+    return
   fi
+  echo "[*] Installing kubectx and kubens..."
+  [ -d ~/.kubectx ] || git clone --depth 1 https://github.com/ahmetb/kubectx ~/.kubectx
+  sudo ln -sf ~/.kubectx/kubectx /usr/local/bin/kubectx
+  sudo ln -sf ~/.kubectx/kubens /usr/local/bin/kubens
+  echo "[✓] kubectx/kubens installed."
 }
 
 install_k9s() {
@@ -173,6 +278,10 @@ install_docker() {
 }
 
 install_fonts() {
+  if fc-list 2>/dev/null | grep -qiE 'FiraCode.*Nerd|Nerd.*FiraCode'; then
+    echo "[✓] FiraCode Nerd Font already installed (fc-list)."
+    return
+  fi
   echo "[*] Installing FiraCode Nerd Font..."
   [ -d ~/nerd-fonts ] || git clone --depth 1 https://github.com/ryanoasis/nerd-fonts.git ~/nerd-fonts
   ~/nerd-fonts/install.sh FiraCode
@@ -183,12 +292,16 @@ install_fonts() {
 
 install_ohmyzsh_and_plugins() {
   export ZSH="$HOME/.oh-my-zsh"
+  local ZSH_CUSTOM="$ZSH/custom"
+  if [[ -d "$ZSH" && -d "${ZSH_CUSTOM}/plugins/zsh-autosuggestions" && -d "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting" && -d "${ZSH_CUSTOM}/themes/powerlevel10k" && -d ~/.kube-ps1 ]]; then
+    echo "[✓] Oh My Zsh and plugins already installed."
+    return
+  fi
   if [ ! -d "$ZSH" ]; then
     echo "[*] Installing Oh My Zsh..."
     RUNZSH=no KEEP_ZSHRC=yes sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
   fi
 
-  ZSH_CUSTOM="$ZSH/custom"
   [ -d "${ZSH_CUSTOM}/plugins/zsh-autosuggestions" ] || git clone --depth 1 https://github.com/zsh-users/zsh-autosuggestions "${ZSH_CUSTOM}/plugins/zsh-autosuggestions"
   [ -d "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting" ] || git clone --depth 1 https://github.com/zsh-users/zsh-syntax-highlighting "${ZSH_CUSTOM}/plugins/zsh-syntax-highlighting"
   [ -d "${ZSH_CUSTOM}/themes/powerlevel10k" ] || git clone --depth 1 https://github.com/romkatv/powerlevel10k.git "${ZSH_CUSTOM}/themes/powerlevel10k"
@@ -196,8 +309,13 @@ install_ohmyzsh_and_plugins() {
 }
 
 write_zshrc() {
+  if [[ -f ~/.zshrc ]] && head -n 1 ~/.zshrc | grep -q 'rice-fedora: managed dotfile'; then
+    echo "[✓] ~/.zshrc already installed (rice-fedora marker); not overwriting."
+    return
+  fi
   echo "[*] Writing .zshrc..."
   cat > ~/.zshrc << 'EOF'
+# rice-fedora: managed dotfile
 # Enable Powerlevel10k instant prompt.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
@@ -260,7 +378,7 @@ alias kn='kubens'
 alias pw1='pwgen -s 15'
 alias projects='cd ~/Documents/projects/'
 alias code='cursor'
-alias mount-personal='sudo mount -t nfs -o resvport 192.168.1.20:/mnt/Personal ~/Personal'
+alias mount-personal='sudo mount -t nfs -o resvport 192.168.1.200:/mnt/Personal ~/Personal'
 source <(fzf --zsh)
 eval "$(zoxide init zsh)"
 
@@ -270,27 +388,71 @@ export PATH="/opt/homebrew/opt/openjdk/bin:$PATH"
 EOF
 }
 
+run_step() {
+  local name="$1" ec=0
+  shift
+  "$@" || ec=$?
+  if [[ $ec -eq 0 ]]; then
+    RICE_PASSED+=("$name")
+  elif [[ $ec -eq "$RICE_STEP_SKIP" ]]; then
+    RICE_SKIPPED+=("$name")
+  else
+    RICE_FAILED+=("$name")
+    echo "[!] Step failed: $name (exit $ec)" >&2
+  fi
+}
+
+print_rice_summary() {
+  echo ""
+  echo "========== Rice summary =========="
+  if ((${#RICE_PASSED[@]} > 0)); then
+    echo "OK (${#RICE_PASSED[@]}):"
+    printf '  • %s\n' "${RICE_PASSED[@]}"
+  fi
+  if ((${#RICE_SKIPPED[@]} > 0)); then
+    echo "Skipped (${#RICE_SKIPPED[@]}):"
+    printf '  • %s\n' "${RICE_SKIPPED[@]}"
+  fi
+  if ((${#RICE_FAILED[@]} > 0)); then
+    echo "Failed (${#RICE_FAILED[@]}):"
+    printf '  • %s\n' "${RICE_FAILED[@]}"
+    echo ""
+    echo "Fix the failed steps (or run this script again; idempotent steps will no-op), then re-run if needed."
+    return 1
+  fi
+  echo ""
+  echo "All runnable steps succeeded. Launch with: exec zsh"
+  echo "Set terminal font to: FiraCode Nerd Font"
+}
+
 # ------------------------- Main -------------------------
 main() {
-  install_core_packages
-  install_rpmfusion
-  install_easyeffects
-  install_easyeffects_thinkpad_preset
-  install_zoxide
-  install_lazygit
-  install_kubectl
-  install_kubecolor
-  install_kubectx_kubens
-  install_k9s
-  install_docker
-  install_aws_cli
-  install_fonts
-  install_ohmyzsh_and_plugins
-  write_zshrc
+  RICE_PASSED=()
+  RICE_SKIPPED=()
+  RICE_FAILED=()
 
-  echo ""
-  echo "✅ All done! Launch with: exec zsh"
-  echo "🎨 Set terminal font to: FiraCode Nerd Font"
+  run_step "Core packages (dnf)" install_core_packages
+  run_step "RPM Fusion" install_rpmfusion
+  run_step "Intel microcode + iGPU" install_intel_microcode_and_igpu
+  run_step "Brave Browser" install_brave
+  run_step "Cursor" install_cursor
+  run_step "Claude Code CLI" install_claude_cli
+  run_step "Spotify" install_spotify
+  run_step "Easy Effects" install_easyeffects
+  run_step "Easy Effects thinkpad-unsuck preset" install_easyeffects_thinkpad_preset
+  run_step "zoxide" install_zoxide
+  run_step "LazyGit" install_lazygit
+  run_step "kubectl" install_kubectl
+  run_step "kubecolor" install_kubecolor
+  run_step "kubectx / kubens" install_kubectx_kubens
+  run_step "k9s" install_k9s
+  run_step "Docker" install_docker
+  run_step "AWS CLI" install_aws_cli
+  run_step "FiraCode Nerd Font" install_fonts
+  run_step "Oh My Zsh + plugins" install_ohmyzsh_and_plugins
+  run_step "Write ~/.zshrc" write_zshrc
+
+  print_rice_summary
 }
 
 main "$@"
